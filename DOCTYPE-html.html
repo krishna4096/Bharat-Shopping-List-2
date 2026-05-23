@@ -1,0 +1,889 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Bharat Grocery List</title>
+    <!-- FontAwesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- JS Libraries for PDF and Barcode Scanner -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+        body {
+            background: linear-gradient(135deg, #ff9933 0%, #ffffff 50%, #138808 100%);
+            min-height: 100vh;
+            padding: 0;
+            overflow-x: hidden;
+        }
+        .container {
+            max-width: 100%;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 0;
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+            margin: 0 auto;
+            min-height: 100vh;
+        }
+        
+        /* Header Styling */
+        .header {
+            background: linear-gradient(to right, #ff9933 0%, #ffffff 50%, #138808 100%);
+            color: #333;
+            padding: 15px;
+            text-align: center;
+            position: relative;
+            border-bottom: 2px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .header h1 { font-size: 22px; font-weight: 700; color: #333; }
+        .header p { font-size: 12px; color: #555; margin-top: 2px; }
+        .menu-btn {
+            background: none; border: none; font-size: 24px; color: #333;
+            cursor: pointer; padding: 5px; border-radius: 50%; transition: background 0.3s;
+        }
+        .menu-btn:hover { background: rgba(255, 255, 255, 0.3); }
+
+        .sidebar {
+            position: fixed; top: 0; left: -300px; width: 300px; height: 100vh;
+            background: white; box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+            z-index: 1000; transition: left 0.3s ease; overflow-y: auto;
+        }
+        .sidebar.active { left: 0; }
+        .sidebar-header {
+            background: linear-gradient(to right, #ff9933 0%, #138808 100%);
+            color: white; padding: 15px; display: flex; justify-content: space-between; align-items: center;
+        }
+        .close-sidebar { background: none; border: none; color: white; font-size: 20px; cursor: pointer; }
+        .sidebar-menu { padding: 10px 0; }
+        .menu-item {
+            display: flex; align-items: center; padding: 12px 20px; cursor: pointer;
+            transition: background 0.3s; border-bottom: 1px solid #f0f0f0;
+        }
+        .menu-item:hover { background: #f8f9fa; }
+        .menu-item i { margin-right: 15px; color: #138808; font-size: 18px; width: 20px; text-align: center; }
+        
+        .overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.5); z-index: 999; display: none;
+        }
+        .overlay.active { display: block; }
+        .content-area { padding: 15px 10px; }
+        .section { display: none; animation: fadeIn 0.5s; }
+        .section.active { display: block; }
+
+        .input-area { display: flex; flex-direction: column; gap: 10px; margin-bottom: 15px; }
+        .input-row { display: flex; gap: 8px; }
+        .input-area input, .input-area select {
+            padding: 12px; border: 2px solid #ddd; border-radius: 8px; font-size: 16px;
+            outline: none; transition: border-color 0.3s; flex: 1; width: 100%;
+        }
+        .input-area input:focus, .input-area select:focus { border-color: #138808; }
+        .input-area button {
+            background: linear-gradient(to right, #ff9933 0%, #138808 100%);
+            border: none; color: white; padding: 14px; border-radius: 8px;
+            cursor: pointer; font-weight: bold; transition: transform 0.2s;
+            display: flex; align-items: center; justify-content: center; margin-top: 5px;
+        }
+        .input-area button:hover { transform: scale(1.02); }
+        .action-buttons { display: flex; gap: 10px; margin-top: 10px; }
+        .action-buttons button {
+            flex: 1; padding: 12px; border-radius: 8px; font-weight: bold; cursor: pointer;
+            transition: transform 0.2s; display: flex; align-items: center; justify-content: center; gap: 5px;
+        }
+        .clear-btn { background: #ff6b6b; color: white; border: none; }
+        .pdf-btn { background: #2c3e50; color: white; border: none; }
+        .checkout-btn { background: #138808; color: white; border: none; }
+
+        .category-filter {
+            display: flex; overflow-x: auto; padding: 10px 0; margin-bottom: 15px;
+            scrollbar-width: thin; -webkit-overflow-scrolling: touch;
+        }
+        .category-filter::-webkit-scrollbar { height: 4px; }
+        .category-filter::-webkit-scrollbar-thumb { background: #138808; border-radius: 10px; }
+        .category-btn {
+            background: #f1f1f1; border: none; padding: 8px 15px; margin-right: 8px;
+            border-radius: 20px; cursor: pointer; font-size: 14px; white-space: nowrap; transition: all 0.3s;
+        }
+        .category-btn.active { background: linear-gradient(to right, #ff9933 0%, #138808 100%); color: white; }
+        
+        .grocery-list { list-style-type: none; max-height: 45vh; overflow-y: auto; scrollbar-width: thin; }
+        .grocery-list::-webkit-scrollbar { width: 4px; }
+        .grocery-list::-webkit-scrollbar-thumb { background: #138808; border-radius: 10px; }
+        
+        .grocery-item {
+            display: flex; flex-direction: column; padding: 12px; background: white;
+            border-radius: 10px; margin-bottom: 10px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+            animation: fadeIn 0.5s; transition: transform 0.2s; border-left: 4px solid #138808;
+        }
+        .item-header { display: flex; align-items: flex-start; margin-bottom: 10px; }
+        .item-checkbox { margin-right: 12px; margin-top: 3px; }
+        .item-checkbox input[type="checkbox"] { width: 20px; height: 20px; cursor: pointer; }
+        .item-details { flex: 1; }
+        .item-name { font-size: 16px; margin-bottom: 5px; font-weight: 500; word-break: break-word; }
+        .item-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 10px; }
+        .item-category { font-size: 12px; color: #138808; background: rgba(19, 136, 8, 0.1); padding: 3px 8px; border-radius: 10px; }
+        .item-weight { font-size: 12px; color: #ff9933; background: rgba(255, 153, 51, 0.1); padding: 3px 8px; border-radius: 10px; }
+        
+        .item-controls {
+            display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center;
+            border-top: 1px dashed #eee; padding-top: 12px; margin-top: 5px; gap: 10px;
+        }
+        .quantity-control, .price-control { display: flex; align-items: center; gap: 8px; }
+        .control-label { font-size: 13px; color: #666; }
+        .control-buttons { display: flex; align-items: center; gap: 5px; }
+        .control-btn {
+            width: 32px; height: 32px; border-radius: 50%; border: 1px solid #ddd;
+            background: white; display: flex; justify-content: center; align-items: center;
+            cursor: pointer; font-size: 14px;
+        }
+        .control-value { min-width: 40px; text-align: center; font-weight: 500; }
+        .price-value { min-width: 70px; text-align: center; font-weight: 500; }
+        .item-total { font-weight: 600; color: #2c3e50; font-size: 16px; margin: 0 5px; }
+        .item-actions { display: flex; gap: 8px; }
+        .action-btn {
+            background: #f1f1f1; border: none; width: 36px; height: 36px;
+            border-radius: 50%; display: flex; justify-content: center; align-items: center;
+            cursor: pointer; transition: all 0.3s;
+        }
+        .action-btn.edit:hover { background: #138808; color: white; }
+        .action-btn.delete:hover { background: #ff6b6b; color: white; }
+        .completed .item-name { text-decoration: line-through; color: #888; }
+        .completed .item-total { color: #888; }
+
+        .stats-area { display: flex; justify-content: space-between; margin-top: 15px; padding-top: 15px; border-top: 1px solid #eee; }
+        .stat { text-align: center; flex: 1; }
+        .stat-value { font-size: 18px; font-weight: bold; color: #138808; }
+        .stat-label { font-size: 12px; color: #777; }
+        
+        .total-area {
+            background: #f8f9fa; padding: 15px; border-radius: 10px; margin-top: 15px;
+            display: flex; justify-content: space-between; align-items: center; border: 1px dashed #138808;
+        }
+        .total-label { font-size: 16px; font-weight: 600; color: #2c3e50; }
+        .total-amount { font-size: 20px; font-weight: 700; color: #138808; }
+        .empty-state { text-align: center; padding: 30px 15px; color: #777; width: 100%; }
+        .empty-state i { font-size: 50px; margin-bottom: 15px; color: #ddd; }
+        
+        /* History Card */
+        .history-card {
+            background: white; border-radius: 10px; padding: 15px; margin-bottom: 15px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06); border-left: 4px solid #ff9933;
+        }
+        .history-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;}
+        .history-date { font-weight: bold; color: #333; }
+        .history-total { color: #138808; font-weight: bold; font-size: 18px; }
+        .history-items { font-size: 13px; color: #666; margin-bottom: 10px; }
+
+        .notification {
+            position: fixed; top: 20px; right: 20px; background: white;
+            border-left: 4px solid #138808; padding: 15px; border-radius: 5px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1); z-index: 3000;
+            animation: slideIn 0.3s ease; max-width: 300px; display: none;
+        }
+        .notification.show { display: block; }
+        .notification-title { font-weight: 500; margin-bottom: 5px; }
+        .notification-message { font-size: 14px; color: #666; }
+        .notification-close { position: absolute; top: 10px; right: 10px; background: none; border: none; color: #888; cursor: pointer; }
+
+        .custom-modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.6); z-index: 2000; display: flex;
+            justify-content: center; align-items: center; opacity: 0; pointer-events: none;
+            transition: opacity 0.3s ease; backdrop-filter: blur(3px);
+        }
+        .custom-modal-overlay.active { opacity: 1; pointer-events: auto; }
+        .custom-modal {
+            background: white; border-radius: 12px; padding: 24px; width: 90%; max-width: 400px;
+            transform: translateY(20px); transition: transform 0.3s ease;
+            border-top: 5px solid #138808; box-shadow: 0 10px 25px rgba(0,0,0,0.2); max-height: 90vh; overflow-y: auto;
+        }
+        .custom-modal-overlay.active .custom-modal { transform: translateY(0); }
+        .modal-title { font-size: 18px; font-weight: bold; color: #333; margin-bottom: 10px; }
+        .modal-body { font-size: 14px; color: #555; margin-bottom: 20px; }
+        .modal-actions { display: flex; justify-content: flex-end; gap: 10px; }
+        .btn-cancel, .btn-confirm { padding: 10px 16px; border-radius: 6px; cursor: pointer; font-weight: 500; border: none; }
+        .btn-cancel { background: #f1f1f1; color: #333; }
+        .btn-confirm { background: #138808; color: white; }
+        .btn-danger { background: #ff6b6b; color: white; }
+        .modal-input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; margin-bottom: 10px; font-size: 14px; }
+
+        .feature-section { padding: 20px; animation: fadeIn 0.5s; }
+        .feature-card { background: white; border-radius: 10px; padding: 15px; margin-bottom: 15px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06); }
+        .feature-card h3 { color: #138808; margin-bottom: 10px; display: flex; align-items: center; }
+        .feature-card h3 i { margin-right: 10px; }
+        .feature-card p { color: #555; margin-bottom: 15px; font-size: 14px; }
+        .feature-card input, .feature-card select { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; margin-bottom: 10px; }
+        .feature-card button { background: linear-gradient(to right, #ff9933 0%, #138808 100%); color: white; border: none; padding: 10px 15px; border-radius: 5px; cursor: pointer; font-weight: bold; margin-right: 10px; margin-bottom: 10px; }
+
+        /* Scanner */
+        .scanner-container { width: 100%; min-height: 250px; background: #000; border-radius: 10px; overflow: hidden; margin-top: 15px; display: none; position: relative; }
+        .scanner-container.active { display: block; }
+        #reader { width: 100%; }
+
+        /* Voice Visualizer */
+        .voice-visualizer { display: flex; justify-content: center; align-items: center; height: 60px; margin: 15px 0; }
+        .voice-bar { width: 5px; height: 20px; background: #138808; margin: 0 3px; border-radius: 3px; animation: voiceAnimation 1s infinite ease-in-out; }
+        .voice-bar:nth-child(2) { animation-delay: 0.1s; }
+        .voice-bar:nth-child(3) { animation-delay: 0.2s; }
+        .voice-bar:nth-child(4) { animation-delay: 0.3s; }
+        .voice-bar:nth-child(5) { animation-delay: 0.4s; }
+        
+        @keyframes voiceAnimation { 0%, 100% { height: 20px; } 50% { height: 50px; } }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        
+        /* Chart container */
+        .chart-container { width: 100%; height: 200px; margin-top: 15px; }
+        
+        @media (max-width: 768px) {
+            .item-controls { flex-direction: column; align-items: stretch; gap: 10px; }
+            .quantity-control, .price-control { justify-content: space-between; width: 100%; }
+            .item-actions { align-self: flex-end; }
+            .input-row { flex-direction: column; gap: 10px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div>
+                <h1>Bharat Shopping List</h1>
+                <p>Smart Grocery & Expense Tracker</p>
+            </div>
+            <button class="menu-btn" id="menu-btn"><i class="fas fa-bars"></i></button>
+        </div>
+        
+        <div class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <h2>Menu</h2>
+                <button class="close-sidebar" id="close-sidebar"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="sidebar-menu">
+                <div class="menu-item" data-section="grocery-list"><i class="fas fa-shopping-basket"></i><span>Active List</span></div>
+                <div class="menu-item" data-section="history"><i class="fas fa-history"></i><span>Shopping History</span></div>
+                <div class="menu-item" data-section="budget"><i class="fas fa-wallet"></i><span>Budget Tracking</span></div>
+                <div class="menu-item" data-section="voice"><i class="fas fa-microphone"></i><span>Voice Commands</span></div>
+                <div class="menu-item" data-section="barcode"><i class="fas fa-barcode"></i><span>Barcode Scanner</span></div>
+                <div class="menu-item" data-section="inventory"><i class="fas fa-boxes"></i><span>Kitchen Inventory</span></div>
+            </div>
+        </div>
+        
+        <div class="overlay" id="overlay"></div>
+        
+        <div class="content-area">
+            <div class="section active" id="grocery-list-section">
+                <div class="input-area">
+                    <input type="text" id="grocery-input" placeholder="Add item (e.g., Aashirvaad Aata)">
+                    
+                    <div class="input-row">
+                        <input type="number" id="price-input" placeholder="Price (₹)" step="1" min="0">
+                        <input type="number" id="weight-input" placeholder="Qty/Weight" step="0.01" min="0.01" value="1">
+                    </div>
+                    
+                    <div class="input-row">
+                        <select id="unit-select">
+                            <option value="kg" selected>Kg</option>
+                            <option value="g">Gram (g)</option>
+                            <option value="ltr">Litre (L)</option>
+                            <option value="pcs">Pieces</option>
+                            <option value="pkt">Packet</option>
+                        </select>
+                        <select id="category-select">
+                            <option value="fruits-veg">Fruits & Veg</option>
+                            <option value="dairy">Dairy</option>
+                            <option value="grains">Grains & Pulses</option>
+                            <option value="spices">Spices & Masala</option>
+                            <option value="snacks">Snacks & Beverages</option>
+                            <option value="personal">Personal Care</option>
+                            <option value="other" selected>Other</option>
+                        </select>
+                    </div>
+                    
+                    <button id="add-item"><i class="fas fa-plus"></i> Add to List</button>
+                    
+                    <div class="action-buttons">
+                        <button class="clear-btn" id="clear-all"><i class="fas fa-trash-alt"></i> Clear</button>
+                        <button class="pdf-btn" id="download-current-pdf"><i class="fas fa-file-pdf"></i> PDF</button>
+                        <button class="checkout-btn" id="checkout-list"><i class="fas fa-check-circle"></i> Save Trip</button>
+                    </div>
+                </div>
+                
+                <div class="category-filter">
+                    <button class="category-btn active" data-category="all">All</button>
+                    <button class="category-btn" data-category="fruits-veg">Fruits & Veg</button>
+                    <button class="category-btn" data-category="dairy">Dairy</button>
+                    <button class="category-btn" data-category="grains">Grains</button>
+                    <button class="category-btn" data-category="spices">Masala</button>
+                    <button class="category-btn" data-category="snacks">Snacks</button>
+                    <button class="category-btn" data-category="other">Other</button>
+                </div>
+                
+                <ul class="grocery-list" id="grocery-list">
+                    <!-- Dynamic Items Inject Here -->
+                </ul>
+                
+                <div class="total-area">
+                    <div class="total-label">Total Estimate:</div>
+                    <div class="total-amount" id="total-amount">₹0.00</div>
+                </div>
+                
+                <div class="stats-area">
+                    <div class="stat"><div class="stat-value" id="total-items">0</div><div class="stat-label">Total Items</div></div>
+                    <div class="stat"><div class="stat-value" id="completed-items">0</div><div class="stat-label">Cart</div></div>
+                    <div class="stat"><div class="stat-value" id="remaining-items">0</div><div class="stat-label">Pending</div></div>
+                </div>
+            </div>
+
+            <div class="section" id="history-section">
+                <div class="feature-section">
+                    <div class="feature-card">
+                        <h3><i class="fas fa-history"></i> Shopping History</h3>
+                        <p>View your past shopping trips and download receipts.</p>
+                        <div id="history-list-container">
+                            <!-- History Trips Inject Here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section" id="barcode-section">
+                <div class="feature-section">
+                    <div class="feature-card">
+                        <h3><i class="fas fa-barcode"></i> Smart Barcode Scanner</h3>
+                        <p>Scan product barcodes using your camera to instantly add them to your list. (Mock Database attached for demonstration)</p>
+                        
+                        <button id="start-scanner"><i class="fas fa-camera"></i> Open Camera</button>
+                        <button id="stop-scanner" style="display:none; background: #ff6b6b;"><i class="fas fa-stop"></i> Stop Camera</button>
+                        
+                        <div class="scanner-container" id="scanner-container">
+                            <div id="reader"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section" id="voice-section">
+                <div class="feature-section">
+                    <div class="feature-card">
+                        <h3><i class="fas fa-microphone"></i> Voice Assistant</h3>
+                        <p>Speak naturally to add items. Example: <b>"Add two kg sugar"</b> or <b>"Add milk"</b>.</p>
+                        
+                        <button id="start-voice"><i class="fas fa-microphone"></i> Start Listening</button>
+                        <button id="stop-voice" style="display:none; background: #ff6b6b;"><i class="fas fa-stop"></i> Stop Listening</button>
+                        
+                        <div id="voice-status" style="margin-top: 15px; display: none;">
+                            <div class="voice-container">
+                                <p id="voice-prompt-text">Listening... Please speak now.</p>
+                                <div class="voice-visualizer">
+                                    <div class="voice-bar"></div><div class="voice-bar"></div>
+                                    <div class="voice-bar"></div><div class="voice-bar"></div><div class="voice-bar"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="voice-result-box" style="margin-top:10px; color: #138808; font-weight: 500;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section" id="budget-section">
+                <div class="feature-section">
+                    <div class="feature-card">
+                        <h3><i class="fas fa-wallet"></i> Budget Tracking</h3>
+                        <p>Set a monthly budget to ensure you don't overspend on groceries.</p>
+                        
+                        <div class="form-group">
+                            <label>Monthly Budget (₹)</label>
+                            <input type="number" id="monthly-budget" placeholder="e.g. 5000">
+                        </div>
+                        <button id="set-budget"><i class="fas fa-save"></i> Save Budget</button>
+                        
+                        <div style="margin-top: 20px;">
+                            <div class="stat"><div class="stat-value" id="budget-amount">₹0</div><div class="stat-label">Budget</div></div>
+                            <div class="stat"><div class="stat-value" id="budget-spent">₹0</div><div class="stat-label">Spent</div></div>
+                            <div class="stat"><div class="stat-value" id="budget-remaining">₹0</div><div class="stat-label">Remaining</div></div>
+                        </div>
+                        <div class="chart-container"><canvas id="budget-chart"></canvas></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section" id="inventory-section">
+                <div class="feature-section">
+                    <div class="feature-card">
+                        <h3><i class="fas fa-boxes"></i> Kitchen Inventory</h3>
+                        <p>Track pantry staples and get low-stock alerts.</p>
+                        <input type="text" id="inv-item" placeholder="Item Name (e.g. Rice)">
+                        <div class="input-row">
+                            <input type="number" id="inv-qty" placeholder="Qty">
+                            <select id="inv-unit"><option value="kg">kg</option><option value="pkt">pkt</option></select>
+                        </div>
+                        <button id="add-inventory"><i class="fas fa-plus"></i> Add Stock</button>
+                        <div id="inventory-list" style="margin-top: 20px;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div id="toast-notification" class="notification">
+        <div class="notification-title" id="toast-title"></div>
+        <div class="notification-message" id="toast-msg"></div>
+        <button class="notification-close" onclick="closeToast()"><i class="fas fa-times"></i></button>
+    </div>
+    
+    <div class="custom-modal-overlay" id="custom-modal-overlay">
+        <div class="custom-modal" id="custom-modal-box">
+            <!-- Dynamic Modal Content injects here -->
+        </div>
+    </div>
+
+    <script>
+        // Global State
+        let groceryItems = JSON.parse(localStorage.getItem('groceryItems')) || [];
+        let shoppingHistory = JSON.parse(localStorage.getItem('shoppingHistory')) || [];
+        let currentCategory = 'all';
+        let currentSection = 'grocery-list';
+        
+        // DOM Elements
+        const overlay = document.getElementById('overlay');
+        const sidebar = document.getElementById('sidebar');
+        const modalOverlay = document.getElementById('custom-modal-overlay');
+        const modalBox = document.getElementById('custom-modal-box');
+        
+        // Setup Navigation
+        document.getElementById('menu-btn').onclick = () => { sidebar.classList.add('active'); overlay.classList.add('active'); };
+        document.getElementById('close-sidebar').onclick = () => { sidebar.classList.remove('active'); overlay.classList.remove('active'); };
+        overlay.onclick = () => { sidebar.classList.remove('active'); overlay.classList.remove('active'); };
+        
+        document.querySelectorAll('.menu-item').forEach(item => {
+            item.onclick = () => {
+                document.querySelectorAll('.section').forEach(sec => sec.classList.remove('active'));
+                const target = item.getAttribute('data-section');
+                document.getElementById(target + '-section').classList.add('active');
+                currentSection = target;
+                sidebar.classList.remove('active');
+                overlay.classList.remove('active');
+                if(target === 'history') renderHistory();
+                if(target === 'budget') updateBudgetDisplay();
+                
+                // Cleanup scanner if navigating away
+                if(target !== 'barcode' && window.html5QrCode) stopBarcodeScanner();
+            };
+        });
+
+        function showToast(title, msg) {
+            const toast = document.getElementById('toast-notification');
+            document.getElementById('toast-title').innerText = title;
+            document.getElementById('toast-msg').innerText = msg;
+            toast.classList.add('show');
+            setTimeout(closeToast, 3000);
+        }
+        function closeToast() { document.getElementById('toast-notification').classList.remove('show'); }
+        
+        function hideModal() { modalOverlay.classList.remove('active'); }
+        
+        function showConfirmModal(title, text, confirmCallback, isDanger = false) {
+            const btnColor = isDanger ? 'btn-danger' : 'btn-confirm';
+            modalBox.innerHTML = `
+                <div class="modal-title">${title}</div>
+                <div class="modal-body">${text}</div>
+                <div class="modal-actions">
+                    <button class="btn-cancel" onclick="hideModal()">Cancel</button>
+                    <button class="btn-confirm ${btnColor}" id="modal-ok">Confirm</button>
+                </div>
+            `;
+            modalOverlay.classList.add('active');
+            document.getElementById('modal-ok').onclick = () => { hideModal(); confirmCallback(); };
+        }
+
+        function formatCurrency(amt) { return '₹' + parseFloat(amt).toFixed(2); }
+        
+        document.getElementById('add-item').onclick = () => {
+            const name = document.getElementById('grocery-input').value.trim();
+            const price = parseFloat(document.getElementById('price-input').value) || 0;
+            const weight = parseFloat(document.getElementById('weight-input').value) || 1;
+            const unit = document.getElementById('unit-select').value;
+            const category = document.getElementById('category-select').value;
+            
+            if(!name) return showToast('Error', 'Please enter an item name!');
+            
+            groceryItems.unshift({ id: Date.now(), name, category, quantity: weight, unit, price, completed: false });
+            saveAndRender();
+            
+            // Clear inputs
+            document.getElementById('grocery-input').value = '';
+            document.getElementById('price-input').value = '';
+            document.getElementById('weight-input').value = '1';
+            showToast('Added', `${name} added to list`);
+        };
+
+        document.querySelectorAll('.category-btn').forEach(btn => {
+            btn.onclick = () => {
+                document.querySelectorAll('.category-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                currentCategory = btn.getAttribute('data-category');
+                renderList();
+            };
+        });
+
+        function saveAndRender() {
+            localStorage.setItem('groceryItems', JSON.stringify(groceryItems));
+            renderList();
+            updateStats();
+        }
+
+        function renderList() {
+            const listEl = document.getElementById('grocery-list');
+            listEl.innerHTML = '';
+            let filtered = currentCategory === 'all' ? groceryItems : groceryItems.filter(i => i.category === currentCategory);
+            
+            if(filtered.length === 0) {
+                listEl.innerHTML = `<div class="empty-state"><i class="fas fa-shopping-basket"></i><p>List is empty</p></div>`;
+                return;
+            }
+            
+            filtered.forEach(item => {
+                const li = document.createElement('li');
+                li.className = `grocery-item ${item.completed ? 'completed' : ''}`;
+                const total = item.quantity * item.price;
+                
+                li.innerHTML = `
+                    <div class="item-header">
+                        <div class="item-checkbox"><input type="checkbox" ${item.completed ? 'checked' : ''} onchange="toggleItem(${item.id}, this.checked)"></div>
+                        <div class="item-details">
+                            <div class="item-name">${item.name}</div>
+                            <div class="item-tags">
+                                <span class="item-category">${item.category}</span>
+                                <span class="item-weight">${item.quantity} ${item.unit}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="item-controls">
+                        <div class="item-total">${formatCurrency(total)}</div>
+                        <div class="item-actions">
+                            <button class="action-btn edit" onclick="editItem(${item.id})"><i class="fas fa-edit"></i></button>
+                            <button class="action-btn delete" onclick="deleteItem(${item.id})"><i class="fas fa-trash"></i></button>
+                        </div>
+                    </div>
+                `;
+                listEl.appendChild(li);
+            });
+        }
+
+        window.toggleItem = (id, checked) => {
+            const item = groceryItems.find(i => i.id === id);
+            if(item) { item.completed = checked; saveAndRender(); }
+        };
+        window.deleteItem = (id) => {
+            showConfirmModal('Delete Item', 'Remove this from your list?', () => {
+                groceryItems = groceryItems.filter(i => i.id !== id);
+                saveAndRender();
+                showToast('Deleted', 'Item removed');
+            }, true);
+        };
+
+        window.editItem = (id) => {
+            const item = groceryItems.find(i => i.id === id);
+            if(!item) return;
+            modalBox.innerHTML = `
+                <div class="modal-title">Edit Item</div>
+                <div class="modal-body">
+                    <input type="text" id="e-name" class="modal-input" value="${item.name}">
+                    <div style="display:flex; gap:10px;">
+                        <input type="number" id="e-qty" class="modal-input" value="${item.quantity}" step="0.01">
+                        <select id="e-unit" class="modal-input">
+                            <option value="kg" ${item.unit==='kg'?'selected':''}>Kg</option>
+                            <option value="g" ${item.unit==='g'?'selected':''}>g</option>
+                            <option value="ltr" ${item.unit==='ltr'?'selected':''}>Litre</option>
+                            <option value="pcs" ${item.unit==='pcs'?'selected':''}>Pcs</option>
+                            <option value="pkt" ${item.unit==='pkt'?'selected':''}>Pkt</option>
+                        </select>
+                    </div>
+                    <input type="number" id="e-price" class="modal-input" value="${item.price}" placeholder="Price per unit">
+                </div>
+                <div class="modal-actions">
+                    <button class="btn-cancel" onclick="hideModal()">Cancel</button>
+                    <button class="btn-confirm" id="save-edit-btn">Save</button>
+                </div>
+            `;
+            modalOverlay.classList.add('active');
+            document.getElementById('save-edit-btn').onclick = () => {
+                item.name = document.getElementById('e-name').value;
+                item.quantity = parseFloat(document.getElementById('e-qty').value) || 1;
+                item.unit = document.getElementById('e-unit').value;
+                item.price = parseFloat(document.getElementById('e-price').value) || 0;
+                saveAndRender(); hideModal(); showToast('Saved', 'Item updated');
+            };
+        };
+
+        function updateStats() {
+            let total = 0, comp = 0;
+            groceryItems.forEach(i => {
+                if(i.completed) comp++;
+                else total += (i.quantity * i.price);
+            });
+            document.getElementById('total-items').innerText = groceryItems.length;
+            document.getElementById('completed-items').innerText = comp;
+            document.getElementById('remaining-items').innerText = groceryItems.length - comp;
+            document.getElementById('total-amount').innerText = formatCurrency(total);
+        }
+
+        document.getElementById('clear-all').onclick = () => {
+            if(!groceryItems.length) return;
+            showConfirmModal('Clear List', 'Delete ALL items?', () => { groceryItems = []; saveAndRender(); }, true);
+        };
+
+        document.getElementById('checkout-list').onclick = () => {
+            if(groceryItems.length === 0) return showToast('Info', 'List is empty!');
+            showConfirmModal('Save Trip & Checkout', 'This will save your current list to History and clear it. Proceed?', () => {
+                const totalCost = groceryItems.reduce((sum, item) => sum + (item.quantity * item.price), 0);
+                const trip = {
+                    id: Date.now(),
+                    date: new Date().toLocaleString(),
+                    items: [...groceryItems],
+                    total: totalCost
+                };
+                shoppingHistory.unshift(trip);
+                localStorage.setItem('shoppingHistory', JSON.stringify(shoppingHistory));
+                
+                groceryItems = [];
+                saveAndRender();
+                showToast('Success', 'Trip Saved to History!');
+            });
+        };
+
+        function renderHistory() {
+            const container = document.getElementById('history-list-container');
+            container.innerHTML = '';
+            if(shoppingHistory.length === 0) {
+                container.innerHTML = '<p style="color:#777; text-align:center;">No past trips recorded.</p>';
+                return;
+            }
+            shoppingHistory.forEach(trip => {
+                const d = document.createElement('div');
+                d.className = 'history-card';
+                d.innerHTML = `
+                    <div class="history-header">
+                        <span class="history-date">${trip.date}</span>
+                        <span class="history-total">${formatCurrency(trip.total)}</span>
+                    </div>
+                    <div class="history-items">${trip.items.length} items purchased.</div>
+                    <button class="pdf-btn" onclick="generatePDF(${trip.id})" style="padding:8px 12px; font-size:12px;"><i class="fas fa-file-pdf"></i> Receipt PDF</button>
+                    <button class="clear-btn" onclick="deleteTrip(${trip.id})" style="padding:8px 12px; font-size:12px; float:right;"><i class="fas fa-trash"></i></button>
+                `;
+                container.appendChild(d);
+            });
+        }
+        
+        window.deleteTrip = (id) => {
+            showConfirmModal('Delete Record', 'Remove this history record permanently?', () => {
+                shoppingHistory = shoppingHistory.filter(t => t.id !== id);
+                localStorage.setItem('shoppingHistory', JSON.stringify(shoppingHistory));
+                renderHistory();
+            }, true);
+        };
+
+        document.getElementById('download-current-pdf').onclick = () => generatePDF('current');
+        
+        window.generatePDF = (tripId) => {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            let itemsToPrint = [];
+            let docTitle = "";
+            let grandTotal = 0;
+
+            if(tripId === 'current') {
+                if(groceryItems.length === 0) return showToast('Error', 'List is empty!');
+                itemsToPrint = groceryItems;
+                docTitle = "Current Active Shopping List";
+                grandTotal = groceryItems.reduce((s, i) => s + (i.quantity * i.price), 0);
+            } else {
+                const trip = shoppingHistory.find(t => t.id === tripId);
+                if(!trip) return;
+                itemsToPrint = trip.items;
+                docTitle = `Shopping Receipt - ${trip.date}`;
+                grandTotal = trip.total;
+            }
+
+            doc.setFontSize(18);
+            doc.setTextColor(19, 136, 8);
+            doc.text("Bharat Shopping Tracker", 14, 15);
+            
+            doc.setFontSize(12);
+            doc.setTextColor(50, 50, 50);
+            doc.text(docTitle, 14, 25);
+
+            const tableData = itemsToPrint.map(item => [
+                item.name,
+                item.category,
+                `${item.quantity} ${item.unit}`,
+                `Rs. ${item.price.toFixed(2)}`,
+                `Rs. ${(item.quantity * item.price).toFixed(2)}`
+            ]);
+
+            doc.autoTable({
+                startY: 35,
+                head: [['Item Name', 'Category', 'Qty', 'Price/Unit', 'Subtotal']],
+                body: tableData,
+                theme: 'striped',
+                headStyles: { fillColor: [19, 136, 8] }
+            });
+
+            doc.setFontSize(14);
+            doc.setTextColor(0, 0, 0);
+            doc.text(`Grand Total: Rs. ${grandTotal.toFixed(2)}`, 14, doc.lastAutoTable.finalY + 15);
+            
+            doc.save(`${docTitle.replace(/[\s,\/:-]+/g, '_')}.pdf`);
+            showToast('Downloaded', 'PDF Generated successfully');
+        };
+
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        let recognition;
+        
+        if (SpeechRecognition) {
+            recognition = new SpeechRecognition();
+            recognition.continuous = false;
+            recognition.lang = 'en-IN'; // Works well for Indian English and Hinglish
+            
+            recognition.onstart = () => {
+                document.getElementById('start-voice').style.display = 'none';
+                document.getElementById('stop-voice').style.display = 'inline-block';
+                document.getElementById('voice-status').style.display = 'block';
+                document.getElementById('voice-result-box').innerText = "";
+            };
+            
+            recognition.onresult = (event) => {
+                const transcript = event.results[0][0].transcript.toLowerCase();
+                document.getElementById('voice-result-box').innerText = `You said: "${transcript}"`;
+                processVoice(transcript);
+            };
+            
+            recognition.onerror = (e) => {
+                document.getElementById('voice-result-box').innerText = "Error: " + e.error + ". Please try again.";
+                stopVoice();
+            };
+            
+            recognition.onend = () => { stopVoice(); };
+        }
+
+        document.getElementById('start-voice').onclick = () => {
+            if(recognition) recognition.start();
+            else showToast('Error', 'Voice commands not supported in this browser.');
+        };
+        
+        document.getElementById('stop-voice').onclick = stopVoice;
+        
+        function stopVoice() {
+            if(recognition) recognition.stop();
+            document.getElementById('start-voice').style.display = 'inline-block';
+            document.getElementById('stop-voice').style.display = 'none';
+            document.getElementById('voice-status').style.display = 'none';
+        }
+
+        function processVoice(text) {
+            // Regex to catch phrases like "add 2 kg potato" or "add milk"
+            const match = text.match(/add\s+(\d+(?:\.\d+)?)\s*(kg|g|gram|grams|kilo|litre|liter|piece|pieces)?\s+(.+)/i);
+            
+            let qty = 1, unit = 'pkt', itemName = text.replace('add ', '').trim();
+            
+            if (match) {
+                qty = parseFloat(match[1]);
+                const rawUnit = (match[2] || '').toLowerCase();
+                itemName = match[3].trim();
+                
+                if(rawUnit.includes('kilo') || rawUnit === 'kg') unit = 'kg';
+                else if(rawUnit.includes('gram') || rawUnit === 'g') unit = 'g';
+                else if(rawUnit.includes('lit')) unit = 'ltr';
+                else if(rawUnit.includes('piec')) unit = 'pcs';
+            }
+
+            if(itemName) {
+                groceryItems.unshift({ id: Date.now(), name: itemName.charAt(0).toUpperCase() + itemName.slice(1), category: 'other', quantity: qty, unit: unit, price: 0, completed: false });
+                saveAndRender();
+                showToast('Success', `Added ${qty} ${unit} ${itemName} to list!`);
+            }
+        }
+
+        window.html5QrCode = null;
+        
+        // Mock DB for barcode lookup demo
+        const mockDatabase = {
+            "default": { name: "Mystery Item", price: 50 },
+            "0": { name: "Tata Salt 1kg", price: 25 },
+            "1": { name: "Aashirvaad Aata 5kg", price: 250 },
+            "2": { name: "Amul Taza Milk 1L", price: 64 },
+            "3": { name: "Maggi Noodles Pkt", price: 14 },
+            "4": { name: "Everest Turmeric Powder", price: 35 },
+            "5": { name: "Brooke Bond Garam Masala", price: 45 },
+            "6": { name: "Haldiram Bhujia 400g", price: 110 },
+            "7": { name: "Lays Aloo Chips", price: 20 },
+            "8": { name: "Saffola Gold Oil 1L", price: 180 },
+            "9": { name: "India Gate Basmati Rice 1kg", price: 120 }
+        };
+
+        document.getElementById('start-scanner').onclick = () => {
+            const container = document.getElementById('scanner-container');
+            container.classList.add('active');
+            document.getElementById('start-scanner').style.display = 'none';
+            document.getElementById('stop-scanner').style.display = 'inline-block';
+            
+            window.html5QrCode = new Html5Qrcode("reader");
+            window.html5QrCode.start(
+                { facingMode: "environment" }, // Rear camera
+                { fps: 10, qrbox: { width: 250, height: 250 } },
+                (decodedText) => {
+                    // Success callback
+                    stopBarcodeScanner();
+                    
+                    // Generate pseudo-random item from mock DB based on last digit of barcode
+                    const lastDigit = decodedText.slice(-1);
+                    const product = mockDatabase[lastDigit] || mockDatabase["default"];
+                    
+                    // Add to list
+                    groceryItems.unshift({ id: Date.now(), name: `${product.name} (Code: ${decodedText.slice(-4)})`, category: 'other', quantity: 1, unit: 'pkt', price: product.price, completed: false });
+                    saveAndRender();
+                    
+                    showConfirmModal('Barcode Scanned!', `Found: ${product.name}\nAdded to your grocery list.`, () => {
+                        switchSection('grocery-list');
+                    });
+                },
+                (errorMessage) => { /* Ignore constant scan feed errors */ }
+            ).catch((err) => {
+                stopBarcodeScanner();
+                showConfirmModal('Camera Error', 'Could not access camera. Please allow camera permissions in your browser.', ()=>{});
+            });
+        };
+
+        document.getElementById('stop-scanner').onclick = stopBarcodeScanner;
+
+        function stopBarcodeScanner() {
+            if(window.html5QrCode) {
+                window.html5QrCode.stop().then(() => {
+                    window.html5QrCode.clear();
+                }).catch(err => console.log("Stop error", err));
+            }
+            document.getElementById('scanner-container').classList.remove('active');
+            document.getElementById('start-scanner').style.display = 'inline-block';
+            document.getElementById('stop-scanner').style.display = 'none';
+        }
+
+        // Initialize App
+        renderList();
+        updateStats();
+    </script>
+</body>
+</html>
